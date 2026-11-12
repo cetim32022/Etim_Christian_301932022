@@ -1,0 +1,158 @@
+SET
+SET
+DROP TABLE
+ALTER TABLE
+DROP INDEX
+DROP INDEX
+DROP INDEX
+DROP INDEX
+DROP INDEX
+DROP INDEX
+DROP INDEX
+DROP INDEX
+CREATE TABLE
+DO
+INSERT 0 60223
+ setval 
+--------
+  60227
+(1 row)
+
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ANALYZE
+DROP TABLE
+
+=== Rows per partition (top 12 by row count) ===
+   partition_name    | size_on_disk | approx_rows 
+---------------------+--------------+-------------
+ contribution_202611 | 632 kB       |        1330
+ contribution_202608 | 528 kB       |        1230
+ contribution_202610 | 528 kB       |        1230
+ contribution_202609 | 528 kB       |        1230
+ contribution_202303 | 528 kB       |        1200
+ contribution_202304 | 528 kB       |        1200
+ contribution_202212 | 528 kB       |        1200
+ contribution_202307 | 528 kB       |        1200
+ contribution_202302 | 528 kB       |        1200
+ contribution_202308 | 528 kB       |        1200
+ contribution_202309 | 528 kB       |        1200
+ contribution_202306 | 528 kB       |        1200
+(12 rows)
+
+
+=== Exact row count per partition (a quick scan) ===
+DO
+
+=== Rows in DEFAULT partition (must be 0) ===
+ default_partition_rows 
+------------------------
+                      0
+(1 row)
+
+
+=== EXPLAIN ANALYZE: contributions for one specific month ===
+(Only the partition(s) covering that month should be scanned.)
+                                                                                                                              QUERY PLAN                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1327.87..1327.89 rows=10 width=104) (actual time=4.066..4.070 rows=10 loops=1)
+   Buffers: shared hit=21
+   ->  Sort  (cost=1327.87..1330.94 rows=1229 width=104) (actual time=4.065..4.067 rows=10 loops=1)
+         Sort Key: (sum(contribution.total_amount)) DESC
+         Sort Method: top-N heapsort  Memory: 26kB
+         Buffers: shared hit=21
+         ->  HashAggregate  (cost=1279.80..1301.31 rows=1229 width=104) (actual time=2.686..3.633 rows=1230 loops=1)
+               Group Key: contribution.rsa_account_id
+               Batches: 1  Memory Usage: 1345kB
+               Buffers: shared hit=21
+               ->  Append  (cost=0.17..1265.90 rows=1390 width=28) (actual time=0.012..1.615 rows=1330 loops=1)
+                     Buffers: shared hit=21
+                     Subplans Removed: 60
+                     ->  Seq Scan on contribution_202611 contribution_1  (cost=0.00..70.88 rows=1330 width=28) (actual time=0.011..1.485 rows=1330 loops=1)
+                           Filter: ((contribution_month >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date) AND (contribution_month < ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) + '1 mon'::interval))::date))
+                           Buffers: shared hit=21
+ Planning:
+   Buffers: shared hit=882
+ Planning Time: 10.265 ms
+ Execution Time: 4.153 ms
+(20 rows)
+
+
+=== End of 01_partitioning.sql ===
+--- replica
+waiting for server to start.... done
+server started
+Replica up: in_recovery=t
+Pager usage is off.
+=== 1. Who is who (primary) ===
+You are now connected to database "pensions" as user "codespace".
+ server  | port | in_recovery 
+---------+------+-------------
+ PRIMARY | 5432 | f
+(1 row)
+
+=== 2. Who is who (replica) ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ server  | port  | in_recovery 
+---------+-------+-------------
+ REPLICA | 55432 | t
+(1 row)
+
+=== 3. A write on the replica is rejected (expected error below) ===
+psql:03_replica_tests.sql:17: ERROR:  cannot execute INSERT in a read-only transaction
+=== 4. Write on the primary ===
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+psql:03_replica_tests.sql:22: NOTICE:  table "replica_check" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+INSERT 0 1
+ marker_written_on_primary 
+---------------------------
+ check-223702
+(1 row)
+
+ pg_sleep 
+----------
+ 
+(1 row)
+
+=== 5. The row arrives on the replica ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ marker_seen_on_replica |          created_at           
+------------------------+-------------------------------
+ check-223702           | 2026-11-12 22:37:02.932483+01
+(1 row)
+
+ replica_caught_up 
+-------------------
+ t
+(1 row)
+
+=== 6. Same data on both servers ===
+ replica_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+ primary_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+=== 7. Replication status on the primary ===
+ application_name |   state   | sync_state | replay_lag_bytes 
+------------------+-----------+------------+------------------
+ pensions_replica | streaming | async      |             4584
+(1 row)
+
+DROP TABLE
+=== End of replica tests ===

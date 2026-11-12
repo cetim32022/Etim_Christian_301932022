@@ -1,0 +1,65 @@
+Pager usage is off.
+=== 1. Who is who (primary) ===
+You are now connected to database "pensions" as user "codespace".
+ server  | port | in_recovery 
+---------+------+-------------
+ PRIMARY | 5432 | f
+(1 row)
+
+=== 2. Who is who (replica) ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ server  | port  | in_recovery 
+---------+-------+-------------
+ REPLICA | 55432 | t
+(1 row)
+
+=== 3. A write on the replica is rejected (expected error below) ===
+psql:03_replica_tests.sql:17: ERROR:  cannot execute INSERT in a read-only transaction
+=== 4. Write on the primary ===
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+psql:03_replica_tests.sql:22: NOTICE:  table "replica_check" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+INSERT 0 1
+ marker_written_on_primary 
+---------------------------
+ check-223702
+(1 row)
+
+ pg_sleep 
+----------
+ 
+(1 row)
+
+=== 5. The row arrives on the replica ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ marker_seen_on_replica |          created_at           
+------------------------+-------------------------------
+ check-223702           | 2026-11-12 22:37:02.932483+01
+(1 row)
+
+ replica_caught_up 
+-------------------
+ t
+(1 row)
+
+=== 6. Same data on both servers ===
+ replica_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+ primary_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+=== 7. Replication status on the primary ===
+ application_name |   state   | sync_state | replay_lag_bytes 
+------------------+-----------+------------+------------------
+ pensions_replica | streaming | async      |             4584
+(1 row)
+
+DROP TABLE
+=== End of replica tests ===
