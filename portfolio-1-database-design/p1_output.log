@@ -1,0 +1,198 @@
+--- 01_schema.sql
+SET
+ALTER DATABASE
+SET
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE INDEX
+--- 02_indexes.sql
+SET
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+--- 03_seed_data.sql
+SET
+SET
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+INSERT 0 6
+INSERT 0 4
+INSERT 0 2
+INSERT 0 30
+INSERT 0 30
+INSERT 0 148
+INSERT 0 120
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+--- 04_bulk_data.sql
+SET
+SET
+INSERT 0 488
+INSERT 0 1200
+INSERT 0 1200
+INSERT 0 60000
+INSERT 0 100
+       metric       | value 
+--------------------+-------
+ employee_count     | 1230
+ rsa_account_count  | 1230
+ contribution_count | 60220
+ fund_price_count   | 636
+(4 rows)
+
+--- 05_constraint_tests.sql
+SET
+SET
+
+=== Constraint tests (10 expected failures + 1 control success) ===
+
+BEGIN
+psql:05_constraint_tests.sql:35: NOTICE:  TEST 1 (employer PK): PASS - unique_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:51: NOTICE:  TEST 2 (employer_code UNIQUE): PASS - unique_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:69: NOTICE:  TEST 3 (employee FK): PASS - foreign_key_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:87: NOTICE:  TEST 4 (salary CHECK): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:123: NOTICE:  TEST 5 (contribution minimum trigger): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:145: NOTICE:  TEST 6 (withdrawal balance trigger): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:174: NOTICE:  TEST 7 (retirement age trigger): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:200: NOTICE:  TEST 8 (one_open_claim_per_rsa): PASS - unique_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:216: NOTICE:  TEST 9 (beneficiary share_pct CHECK): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:234: NOTICE:  TEST 10 (beneficiary total share trigger): PASS - check_violation caught
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:278: NOTICE:  CONTROL TEST (valid contribution): PASS - inserted 1 row as expected
+DO
+ROLLBACK
+
+=== End of constraint tests ===
