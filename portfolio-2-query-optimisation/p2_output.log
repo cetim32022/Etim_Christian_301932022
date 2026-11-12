@@ -1,0 +1,237 @@
+SET
+========================================================
+PHASE 1 - DROP the P2 selective indexes
+========================================================
+DROP INDEX
+DROP INDEX
+DROP INDEX
+
+========================================================
+PHASE 2 - BEFORE plans (selective indexes gone)
+========================================================
+
+--- Q1 BEFORE: single RSA holder statement ---
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.29..87.53 rows=24 width=78) (actual time=0.155..0.272 rows=14 loops=1)
+   Buffers: shared hit=10
+   ->  Index Scan Backward using contribution_rsa_account_id_contribution_month_key on contribution c  (cost=0.29..836.31 rows=230 width=78) (actual time=0.154..0.268 rows=14 loops=1)
+         Index Cond: (rsa_account_id = 1)
+         Buffers: shared hit=10
+ Planning:
+   Buffers: shared hit=178
+ Planning Time: 0.674 ms
+ Execution Time: 0.303 ms
+(9 rows)
+
+
+--- Q2 BEFORE: one employer, last 12 months ---
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate  (cost=552.49..554.77 rows=64 width=108) (actual time=9.945..11.144 rows=23 loops=1)
+   Group Key: contribution_month
+   Buffers: shared hit=370
+   ->  Sort  (cost=552.49..552.69 rows=77 width=52) (actual time=9.925..10.182 rows=2650 loops=1)
+         Sort Key: contribution_month DESC
+         Sort Method: quicksort  Memory: 239kB
+         Buffers: shared hit=370
+         ->  Bitmap Heap Scan on contribution c  (cost=6.03..550.08 rows=77 width=52) (actual time=0.398..9.145 rows=2650 loops=1)
+               Recheck Cond: (employer_id = 1)
+               Filter: (contribution_month >= ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '1 year'::interval))::date)
+               Rows Removed by Filter: 7400
+               Heap Blocks: exact=358
+               Buffers: shared hit=367
+               ->  Bitmap Index Scan on idx_contribution_employer_id  (cost=0.00..6.01 rows=230 width=0) (actual time=0.339..0.339 rows=10050 loops=1)
+                     Index Cond: (employer_id = 1)
+                     Buffers: shared hit=9
+ Planning:
+   Buffers: shared hit=15
+ Planning Time: 1.305 ms
+ Execution Time: 11.254 ms
+(20 rows)
+
+
+--- Q3 BEFORE: one fund latest price + 30-day avg ---
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=10.09..22.15 rows=1 width=90) (actual time=0.083..0.086 rows=1 loops=1)
+   Buffers: shared hit=9
+   ->  Nested Loop  (cost=0.42..12.47 rows=1 width=66) (actual time=0.037..0.039 rows=1 loops=1)
+         Buffers: shared hit=5
+         ->  Index Scan using pension_fund_pkey on pension_fund f  (cost=0.14..8.16 rows=1 width=46) (actual time=0.010..0.011 rows=1 loops=1)
+               Index Cond: (fund_id = 3)
+               Buffers: shared hit=2
+         ->  Limit  (cost=0.28..4.29 rows=1 width=20) (actual time=0.025..0.026 rows=1 loops=1)
+               Buffers: shared hit=3
+               ->  Index Scan Backward using fund_price_pkey on fund_price fp  (cost=0.28..24.38 rows=6 width=20) (actual time=0.024..0.024 rows=1 loops=1)
+                     Index Cond: (fund_id = f.fund_id)
+                     Buffers: shared hit=3
+   ->  Aggregate  (cost=9.67..9.68 rows=1 width=32) (actual time=0.044..0.045 rows=1 loops=1)
+         Buffers: shared hit=4
+         ->  Bitmap Heap Scan on fund_price fp_1  (cost=4.30..9.66 rows=2 width=16) (actual time=0.016..0.019 rows=4 loops=1)
+               Recheck Cond: ((fund_id = f.fund_id) AND (price_date >= (CURRENT_DATE - 30)))
+               Heap Blocks: exact=2
+               Buffers: shared hit=4
+               ->  Bitmap Index Scan on fund_price_pkey  (cost=0.00..4.30 rows=2 width=0) (actual time=0.012..0.012 rows=4 loops=1)
+                     Index Cond: ((fund_id = f.fund_id) AND (price_date >= (CURRENT_DATE - 30)))
+                     Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=79
+ Planning Time: 0.336 ms
+ Execution Time: 0.117 ms
+(25 rows)
+
+
+--- Q4 BEFORE: last 30 days of posted contributions ---
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=2276.65..2276.77 rows=50 width=40) (actual time=23.255..23.282 rows=50 loops=1)
+   Buffers: shared hit=963
+   ->  Sort  (cost=2276.65..2315.05 rows=15360 width=40) (actual time=23.254..23.257 rows=50 loops=1)
+         Sort Key: posted_at DESC
+         Sort Method: top-N heapsort  Memory: 28kB
+         Buffers: shared hit=963
+         ->  Seq Scan on contribution c  (cost=0.00..1766.40 rows=15360 width=40) (actual time=0.349..21.205 rows=1330 loops=1)
+               Filter: (posted_at >= (now() - '30 days'::interval))
+               Rows Removed by Filter: 58890
+               Buffers: shared hit=960
+ Planning:
+   Buffers: shared hit=11
+ Planning Time: 0.078 ms
+ Execution Time: 23.296 ms
+(14 rows)
+
+
+========================================================
+PHASE 3 - RECREATE the P2 selective indexes
+========================================================
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ANALYZE
+ANALYZE
+
+========================================================
+PHASE 4 - AFTER plans (selective indexes present)
+========================================================
+
+--- Q1 AFTER: single RSA holder statement ---
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=14.03..14.09 rows=24 width=39) (actual time=0.035..0.038 rows=14 loops=1)
+   Buffers: shared hit=6
+   ->  Sort  (cost=14.03..14.15 rows=49 width=39) (actual time=0.034..0.035 rows=14 loops=1)
+         Sort Key: contribution_month DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=6
+         ->  Index Scan using idx_contribution_rsa_account_id on contribution c  (cost=0.29..12.66 rows=49 width=39) (actual time=0.009..0.023 rows=14 loops=1)
+               Index Cond: (rsa_account_id = 1)
+               Buffers: shared hit=6
+ Planning:
+   Buffers: shared hit=72 read=3
+ Planning Time: 1.015 ms
+ Execution Time: 0.060 ms
+(13 rows)
+
+
+--- Q2 AFTER: one employer, last 12 months ---
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=1105.88..1106.03 rows=60 width=108) (actual time=2.783..2.790 rows=23 loops=1)
+   Sort Key: contribution_month DESC
+   Sort Method: quicksort  Memory: 26kB
+   Buffers: shared hit=236 read=4
+   ->  HashAggregate  (cost=1103.05..1104.10 rows=60 width=108) (actual time=2.756..2.773 rows=23 loops=1)
+         Group Key: contribution_month
+         Batches: 1  Memory Usage: 48kB
+         Buffers: shared hit=236 read=4
+         ->  Bitmap Heap Scan on contribution c  (cost=38.97..1070.53 rows=2602 width=24) (actual time=0.162..0.864 rows=2650 loops=1)
+               Recheck Cond: ((employer_id = 1) AND (contribution_month >= ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '1 year'::interval))::date))
+               Heap Blocks: exact=236
+               Buffers: shared hit=236 read=4
+               ->  Bitmap Index Scan on idx_contribution_employer_month  (cost=0.00..38.32 rows=2602 width=0) (actual time=0.127..0.128 rows=2650 loops=1)
+                     Index Cond: ((employer_id = 1) AND (contribution_month >= ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '1 year'::interval))::date))
+                     Buffers: shared read=4
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.180 ms
+ Execution Time: 2.829 ms
+(19 rows)
+
+
+--- Q3 AFTER: one fund latest price + 30-day avg ---
+                                                                          QUERY PLAN                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=9.86..18.10 rows=1 width=81) (actual time=0.047..0.050 rows=1 loops=1)
+   Buffers: shared hit=9
+   ->  Nested Loop  (cost=0.42..8.64 rows=1 width=57) (actual time=0.025..0.026 rows=1 loops=1)
+         Buffers: shared hit=5
+         ->  Index Scan using pension_fund_pkey on pension_fund f  (cost=0.14..8.16 rows=1 width=46) (actual time=0.009..0.009 rows=1 loops=1)
+               Index Cond: (fund_id = 3)
+               Buffers: shared hit=2
+         ->  Limit  (cost=0.28..0.47 rows=1 width=11) (actual time=0.014..0.014 rows=1 loops=1)
+               Buffers: shared hit=3
+               ->  Index Scan Backward using fund_price_pkey on fund_price fp  (cost=0.28..30.59 rows=159 width=11) (actual time=0.012..0.012 rows=1 loops=1)
+                     Index Cond: (fund_id = f.fund_id)
+                     Buffers: shared hit=3
+   ->  Aggregate  (cost=9.44..9.45 rows=1 width=32) (actual time=0.021..0.022 rows=1 loops=1)
+         Buffers: shared hit=4
+         ->  Bitmap Heap Scan on fund_price fp_1  (cost=4.32..9.43 rows=4 width=7) (actual time=0.011..0.013 rows=4 loops=1)
+               Recheck Cond: ((fund_id = f.fund_id) AND (price_date >= (CURRENT_DATE - 30)))
+               Heap Blocks: exact=2
+               Buffers: shared hit=4
+               ->  Bitmap Index Scan on fund_price_pkey  (cost=0.00..4.32 rows=4 width=0) (actual time=0.006..0.006 rows=4 loops=1)
+                     Index Cond: ((fund_id = f.fund_id) AND (price_date >= (CURRENT_DATE - 30)))
+                     Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 1.295 ms
+ Execution Time: 0.091 ms
+(25 rows)
+
+
+--- Q4 AFTER: last 30 days of posted contributions ---
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.29..120.71 rows=50 width=32) (actual time=0.030..0.049 rows=50 loops=1)
+   Buffers: shared hit=2 read=2
+   ->  Index Scan Backward using idx_contribution_posted_at on contribution c  (cost=0.29..3138.39 rows=1303 width=32) (actual time=0.030..0.043 rows=50 loops=1)
+         Index Cond: (posted_at >= (now() - '30 days'::interval))
+         Buffers: shared hit=2 read=2
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 0.125 ms
+ Execution Time: 0.062 ms
+(9 rows)
+
+
+========================================================
+PHASE 5 - Reference: full-table aggregate stays Seq Scan
+(no index is created for these - it would not help)
+========================================================
+
+--- Q5 reference: total contributions per employer ---
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=2194.45..2195.20 rows=60 width=98) (actual time=70.920..70.926 rows=6 loops=1)
+   Group Key: emp.employer_code
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared hit=961
+   ->  Hash Join  (cost=11.35..1742.80 rows=60220 width=66) (actual time=0.022..35.771 rows=60220 loops=1)
+         Hash Cond: (c.employer_id = emp.employer_id)
+         Buffers: shared hit=961
+         ->  Seq Scan on contribution c  (cost=0.00..1562.20 rows=60220 width=16) (actual time=0.006..7.250 rows=60220 loops=1)
+               Buffers: shared hit=960
+         ->  Hash  (cost=10.60..10.60 rows=60 width=66) (actual time=0.010..0.011 rows=6 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buffers: shared hit=1
+               ->  Seq Scan on employer emp  (cost=0.00..10.60 rows=60 width=66) (actual time=0.004..0.006 rows=6 loops=1)
+                     Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=107
+ Planning Time: 0.364 ms
+ Execution Time: 70.964 ms
+(18 rows)
+
+
+=== End of 02_explain_analyze.sql ===
