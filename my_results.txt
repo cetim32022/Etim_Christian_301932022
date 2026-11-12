@@ -1,0 +1,261 @@
+MIT 8103 results - Etim Christian Ime (2026/A/MIT/0925) - pensions
+Collected: 2026-11-12 21:37:06 UTC
+Git commits:
+faaa01d Portfolio 5: partitioning and streaming replica
+f8e76b6 Portfolio 4: MongoDB collections, aggregations and index demo
+e931d77 Portfolio 3: transactions and race-condition demos
+2b43be4 Portfolio 2: query optimisation with EXPLAIN ANALYZE
+c1eee7f Portfolio 1: database design, bulk data and constraint tests
+e1fad1d Add setup script, README, references and CHANGES
+e18bbd2 Initial commit
+
+=============== P1 row counts and constraint tests ===============
+ employee_count     | 1230
+ rsa_account_count  | 1230
+ contribution_count | 60220
+ fund_price_count   | 636
+psql:05_constraint_tests.sql:35: NOTICE:  TEST 1 (employer PK): PASS - unique_violation caught
+psql:05_constraint_tests.sql:51: NOTICE:  TEST 2 (employer_code UNIQUE): PASS - unique_violation caught
+psql:05_constraint_tests.sql:69: NOTICE:  TEST 3 (employee FK): PASS - foreign_key_violation caught
+psql:05_constraint_tests.sql:87: NOTICE:  TEST 4 (salary CHECK): PASS - check_violation caught
+psql:05_constraint_tests.sql:123: NOTICE:  TEST 5 (contribution minimum trigger): PASS - check_violation caught
+psql:05_constraint_tests.sql:145: NOTICE:  TEST 6 (withdrawal balance trigger): PASS - check_violation caught
+psql:05_constraint_tests.sql:174: NOTICE:  TEST 7 (retirement age trigger): PASS - check_violation caught
+psql:05_constraint_tests.sql:200: NOTICE:  TEST 8 (one_open_claim_per_rsa): PASS - unique_violation caught
+psql:05_constraint_tests.sql:216: NOTICE:  TEST 9 (beneficiary share_pct CHECK): PASS - check_violation caught
+psql:05_constraint_tests.sql:234: NOTICE:  TEST 10 (beneficiary total share trigger): PASS - check_violation caught
+psql:05_constraint_tests.sql:278: NOTICE:  CONTROL TEST (valid contribution): PASS - inserted 1 row as expected
+
+=============== P2 before/after (plans and times) ===============
+PHASE 1 - DROP the P2 selective indexes
+PHASE 2 - BEFORE plans (selective indexes gone)
+--- Q1 BEFORE: single RSA holder statement ---
+                                                                                       QUERY PLAN                                                                                       
+   ->  Index Scan Backward using contribution_rsa_account_id_contribution_month_key on contribution c  (cost=0.29..836.31 rows=230 width=78) (actual time=0.154..0.268 rows=14 loops=1)
+ Execution Time: 0.303 ms
+--- Q2 BEFORE: one employer, last 12 months ---
+                                                                      QUERY PLAN                                                                       
+         ->  Bitmap Heap Scan on contribution c  (cost=6.03..550.08 rows=77 width=52) (actual time=0.398..9.145 rows=2650 loops=1)
+               ->  Bitmap Index Scan on idx_contribution_employer_id  (cost=0.00..6.01 rows=230 width=0) (actual time=0.339..0.339 rows=10050 loops=1)
+ Execution Time: 11.254 ms
+--- Q3 BEFORE: one fund latest price + 30-day avg ---
+                                                                         QUERY PLAN                                                                         
+         ->  Index Scan using pension_fund_pkey on pension_fund f  (cost=0.14..8.16 rows=1 width=46) (actual time=0.010..0.011 rows=1 loops=1)
+               ->  Index Scan Backward using fund_price_pkey on fund_price fp  (cost=0.28..24.38 rows=6 width=20) (actual time=0.024..0.024 rows=1 loops=1)
+         ->  Bitmap Heap Scan on fund_price fp_1  (cost=4.30..9.66 rows=2 width=16) (actual time=0.016..0.019 rows=4 loops=1)
+               ->  Bitmap Index Scan on fund_price_pkey  (cost=0.00..4.30 rows=2 width=0) (actual time=0.012..0.012 rows=4 loops=1)
+ Execution Time: 0.117 ms
+--- Q4 BEFORE: last 30 days of posted contributions ---
+                                                           QUERY PLAN                                                           
+         ->  Seq Scan on contribution c  (cost=0.00..1766.40 rows=15360 width=40) (actual time=0.349..21.205 rows=1330 loops=1)
+ Execution Time: 23.296 ms
+PHASE 3 - RECREATE the P2 selective indexes
+PHASE 4 - AFTER plans (selective indexes present)
+--- Q1 AFTER: single RSA holder statement ---
+                                                                           QUERY PLAN                                                                           
+         ->  Index Scan using idx_contribution_rsa_account_id on contribution c  (cost=0.29..12.66 rows=49 width=39) (actual time=0.009..0.023 rows=14 loops=1)
+ Execution Time: 0.060 ms
+--- Q2 AFTER: one employer, last 12 months ---
+                                                                                     QUERY PLAN                                                                                     
+         ->  Bitmap Heap Scan on contribution c  (cost=38.97..1070.53 rows=2602 width=24) (actual time=0.162..0.864 rows=2650 loops=1)
+               ->  Bitmap Index Scan on idx_contribution_employer_month  (cost=0.00..38.32 rows=2602 width=0) (actual time=0.127..0.128 rows=2650 loops=1)
+ Execution Time: 2.829 ms
+--- Q3 AFTER: one fund latest price + 30-day avg ---
+                                                                          QUERY PLAN                                                                          
+         ->  Index Scan using pension_fund_pkey on pension_fund f  (cost=0.14..8.16 rows=1 width=46) (actual time=0.009..0.009 rows=1 loops=1)
+               ->  Index Scan Backward using fund_price_pkey on fund_price fp  (cost=0.28..30.59 rows=159 width=11) (actual time=0.012..0.012 rows=1 loops=1)
+         ->  Bitmap Heap Scan on fund_price fp_1  (cost=4.32..9.43 rows=4 width=7) (actual time=0.011..0.013 rows=4 loops=1)
+               ->  Bitmap Index Scan on fund_price_pkey  (cost=0.00..4.32 rows=4 width=0) (actual time=0.006..0.006 rows=4 loops=1)
+ Execution Time: 0.091 ms
+--- Q4 AFTER: last 30 days of posted contributions ---
+                                                                            QUERY PLAN                                                                            
+   ->  Index Scan Backward using idx_contribution_posted_at on contribution c  (cost=0.29..3138.39 rows=1303 width=32) (actual time=0.030..0.043 rows=50 loops=1)
+ Execution Time: 0.062 ms
+PHASE 5 - Reference: full-table aggregate stays Seq Scan
+--- Q5 reference: total contributions per employer ---
+                                                           QUERY PLAN                                                           
+         ->  Seq Scan on contribution c  (cost=0.00..1562.20 rows=60220 width=16) (actual time=0.006..7.250 rows=60220 loops=1)
+               ->  Seq Scan on employer emp  (cost=0.00..10.60 rows=60 width=66) (actual time=0.004..0.006 rows=6 loops=1)
+ Execution Time: 70.964 ms
+
+=============== P3 transactions (SQL) ===============
+SET
+UPDATE 0
+========================================================
+(A) COMMITTED contribution posting
+========================================================
+INSERT 0 1
+Committed. Verification count (should be 1):
+ committed_rows 
+----------------
+              1
+(1 row)
+========================================================
+(B) ROLLED-BACK contribution posting
+========================================================
+BEGIN
+INSERT 0 1
+ROLLBACK
+Rolled back. Verification count (should be 0):
+ rolled_back_rows 
+------------------
+                0
+(1 row)
+========================================================
+(C) SAVEPOINT recovery in a batch of employer contributions
+========================================================
+A batch of 3 rows is attempted. Row 2 deliberately violates the
+statutory minimum trigger (employer_share below 10%).
+We SAVEPOINT, skip the bad row, and COMMIT the other two.
+psql:01_transactions.sql:228: NOTICE:  Row 2 skipped (statutory minimum trigger fired): Employer share 1000.00 below statutory minimum 58000.00 (10% of salary 580000.00)
+psql:01_transactions.sql:228: NOTICE:  Batch summary: good=2, bad=1
+DO
+Committed. Verification count (should be 2):
+ good_rows 
+-----------
+         2
+(1 row)
+=== End of 01_transactions.sql ===
+--- race_demos.py
+======================================================================
+Part 1 - the bug (read balance then UPDATE; lost update / overdraft)
+
+=============== P3 race demos ===============
+Part 1 - the bug (read balance then UPDATE; lost update / overdraft)
+Start balance on account 9999901: 100,000.00
+  T1: rows=1, wrote=20000.0, err=None
+  T2: rows=1, wrote=20000.0, err=None
+End balance on account 9999901: 20,000.00
+BUG: balance moved by less than the sum of the two withdrawals.
+Part 2 - CHECK constraint fix (atomic decrement + balance >= 0)
+Start balance on account 9999901: 100,000.00
+  T1: rows=1, err=None
+  T2: rows=0, err=23514
+End balance on account 9999901: 20,000.00
+FIX: the second UPDATE raised SQLSTATE 23514 (check_violation) because it would have pushed balance below 0.
+Part 3 - atomic conditional UPDATE (chosen P3 fix)
+Start balance on account 9999901: 100,000.00
+  T1: rows_affected=1, err=None
+  T2: rows_affected=0, err=None
+End balance on account 9999901: 20,000.00
+FIX: one thread got rowcount=1 (success), the other got rowcount=0 (balance already below the withdrawal amount).
+Part 4 - SERIALIZABLE isolation (expects SQLSTATE 40001)
+Start balance on account 9999901: 100,000.00
+  T1: rows=1, err=None
+  T2: rows=0, err=40001
+End balance on account 9999901: 20,000.00
+FIX: one transaction was aborted with SQLSTATE 40001 so the conflict could not silently corrupt the balance.
+Part 5 - READ COMMITTED vs REPEATABLE READ (visibility)
+Under READ COMMITTED, T1's two reads return DIFFERENT values.
+Under REPEATABLE READ, T1's two reads return the SAME value (snapshot frozen at first statement).
+  READ COMMITTED : first=100,000.00  second=150,000.00  -> DIFFERENT
+  REPEATABLE READ: first=100,000.00  second=100,000.00  -> SAME
+Part 6 - deadlock (SQLSTATE 40P01) plus fixed-order version
+  T1: err=40P01 (deadlock detected)
+  T2: err=None (None)
+  DEADLOCK: one transaction was aborted with SQLSTATE 40P01.
+--- 6b. FIXED order: both threads lock A first, then B ---
+  T1: err=None (None)
+  T2: err=None (None)
+  NO DEADLOCK: both transactions committed because they acquired locks in the same order.
+
+=============== P4 MongoDB COLLSCAN vs IXSCAN ===============
+Inserted 40000 bulk documents in 840 ms.
+Stage BEFORE: COLLSCAN
+Docs BEFORE : 40012
+Time ms BEFORE: 18
+Stage AFTER : IXSCAN
+Docs AFTER  : 51
+Time ms AFTER: 9
+================ SUMMARY ================
+Stage         COLLSCAN                IXSCAN
+Docs examined 40012                51
+Time (ms)     18                9
+
+=============== P5 partitions ===============
+   partition_name    | size_on_disk | approx_rows 
+ contribution_202611 | 632 kB       |        1330
+ contribution_202608 | 528 kB       |        1230
+ contribution_202610 | 528 kB       |        1230
+ contribution_202609 | 528 kB       |        1230
+ contribution_202303 | 528 kB       |        1200
+ contribution_202304 | 528 kB       |        1200
+ contribution_202212 | 528 kB       |        1200
+ contribution_202307 | 528 kB       |        1200
+ contribution_202302 | 528 kB       |        1200
+ contribution_202308 | 528 kB       |        1200
+ contribution_202309 | 528 kB       |        1200
+ contribution_202306 | 528 kB       |        1200
+ default_partition_rows 
+                     ->  Seq Scan on contribution_202611 contribution_1  (cost=0.00..70.88 rows=1330 width=28) (actual time=0.011..1.485 rows=1330 loops=1)
+                           Filter: ((contribution_month >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date) AND (contribution_month < ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) + '1 mon'::interval))::date))
+ Execution Time: 4.153 ms
+ replica_contribution_rows 
+ primary_contribution_rows 
+
+=============== P5 replica (full log) ===============
+Pager usage is off.
+=== 1. Who is who (primary) ===
+You are now connected to database "pensions" as user "codespace".
+ server  | port | in_recovery 
+---------+------+-------------
+ PRIMARY | 5432 | f
+(1 row)
+
+=== 2. Who is who (replica) ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ server  | port  | in_recovery 
+---------+-------+-------------
+ REPLICA | 55432 | t
+(1 row)
+
+=== 3. A write on the replica is rejected (expected error below) ===
+psql:03_replica_tests.sql:17: ERROR:  cannot execute INSERT in a read-only transaction
+=== 4. Write on the primary ===
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+psql:03_replica_tests.sql:22: NOTICE:  table "replica_check" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+INSERT 0 1
+ marker_written_on_primary 
+---------------------------
+ check-223702
+(1 row)
+
+ pg_sleep 
+----------
+ 
+(1 row)
+
+=== 5. The row arrives on the replica ===
+You are now connected to database "pensions" as user "codespace" via socket in "/tmp" at port "55432".
+ marker_seen_on_replica |          created_at           
+------------------------+-------------------------------
+ check-223702           | 2026-11-12 22:37:02.932483+01
+(1 row)
+
+ replica_caught_up 
+-------------------
+ t
+(1 row)
+
+=== 6. Same data on both servers ===
+ replica_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+You are now connected to database "pensions" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+ primary_contribution_rows 
+---------------------------
+                     60223
+(1 row)
+
+=== 7. Replication status on the primary ===
+ application_name |   state   | sync_state | replay_lag_bytes 
+------------------+-----------+------------+------------------
+ pensions_replica | streaming | async      |             4584
+(1 row)
+
+DROP TABLE
+=== End of replica tests ===
