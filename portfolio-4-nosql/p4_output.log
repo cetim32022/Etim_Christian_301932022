@@ -1,0 +1,183 @@
+--- 01_setup.js
+01_setup.js: collections member_documents and portal_activity created with $jsonSchema validators.
+--- 02_data_and_queries.js
+02_data_and_queries.js: seed inserted: member_documents=8, portal_activity=12
+
+--- Pipeline 1: document counts per RSA, split by document_type ---
+[
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000001',
+      document_type: 'BVN_VERIFICATION'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-11-05T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000001',
+      document_type: 'CLAIM_FORM'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-11-10T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000002',
+      document_type: 'BVN_VERIFICATION'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-09-13T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000007',
+      document_type: 'CLAIM_FORM'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-11-11T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000010',
+      document_type: 'BVN_VERIFICATION'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-07-15T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000010',
+      document_type: 'CLAIM_FORM'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-10-13T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000013',
+      document_type: 'BVN_VERIFICATION'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-08-14T21:36:49.524Z')
+  },
+  {
+    _id: {
+      rsa_number: 'LHP/RSA/000013',
+      document_type: 'CLAIM_FORM'
+    },
+    count: 1,
+    last_uploaded: ISODate('2026-11-07T21:36:49.524Z')
+  }
+]
+
+--- Pipeline 2: last-7-day portal activity per RSA ---
+[
+  {
+    _id: 'LHP/RSA/000010',
+    logins: 1,
+    statements: 2,
+    first_seen: ISODate('2026-11-07T21:36:49.530Z'),
+    last_seen: ISODate('2026-11-08T21:36:49.530Z')
+  },
+  {
+    _id: 'LHP/RSA/000013',
+    logins: 1,
+    statements: 1,
+    first_seen: ISODate('2026-11-06T21:36:49.530Z'),
+    last_seen: ISODate('2026-11-06T21:36:49.530Z')
+  },
+  {
+    _id: 'LHP/RSA/000001',
+    logins: 1,
+    statements: 1,
+    first_seen: ISODate('2026-11-11T21:36:49.529Z'),
+    last_seen: ISODate('2026-11-11T21:36:49.529Z')
+  },
+  {
+    _id: 'LHP/RSA/000002',
+    logins: 1,
+    statements: 1,
+    first_seen: ISODate('2026-11-10T21:36:49.529Z'),
+    last_seen: ISODate('2026-11-10T21:36:49.530Z')
+  },
+  {
+    _id: 'LHP/RSA/000007',
+    logins: 1,
+    statements: 1,
+    first_seen: ISODate('2026-11-09T21:36:49.530Z'),
+    last_seen: ISODate('2026-11-09T21:36:49.530Z')
+  }
+]
+
+--- Pipeline 3: claim-form uploads that also had a portal login within +/- 7 days ---
+[
+  {
+    rsa_number: 'LHP/RSA/000007',
+    claim_id: Long('1002'),
+    claim_type: 'EARLY',
+    uploaded_at: ISODate('2026-11-11T21:36:49.524Z'),
+    logins: [
+      {
+        occurred_at: ISODate('2026-11-09T21:36:49.530Z'),
+        ip_address: '197.210.0.22',
+        login_method: 'OTP'
+      }
+    ]
+  },
+  {
+    rsa_number: 'LHP/RSA/000001',
+    claim_id: Long('1001'),
+    claim_type: 'EARLY',
+    uploaded_at: ISODate('2026-11-10T21:36:49.524Z'),
+    logins: [
+      {
+        occurred_at: ISODate('2026-11-11T21:36:49.529Z'),
+        ip_address: '41.58.0.10',
+        login_method: 'OTP'
+      },
+      {
+        occurred_at: ISODate('2026-11-04T21:36:49.530Z'),
+        ip_address: '41.58.0.10',
+        login_method: 'PASSWORD'
+      }
+    ]
+  },
+  {
+    rsa_number: 'LHP/RSA/000013',
+    claim_id: Long('1004'),
+    claim_type: 'RETIREMENT',
+    uploaded_at: ISODate('2026-11-07T21:36:49.524Z'),
+    logins: [
+      {
+        occurred_at: ISODate('2026-11-06T21:36:49.530Z'),
+        ip_address: '105.112.0.91',
+        login_method: 'OTP'
+      }
+    ]
+  }
+]
+
+02_data_and_queries.js: done.
+--- 03_bulk_and_index_demo.js
+Inserted 40000 bulk documents in 840 ms.
+
+--- BEFORE (COLLSCAN via hint({$natural:1})) ---
+Stage BEFORE: COLLSCAN
+Docs BEFORE : 40012
+Time ms BEFORE: 18
+
+--- Creating compound index { rsa_number:1, activity_type:1, occurred_at:-1 } ---
+
+--- AFTER (IXSCAN via compound index) ---
+Stage AFTER : IXSCAN
+Docs AFTER  : 51
+Time ms AFTER: 9
+
+================ SUMMARY ================
+Metric        BEFORE                AFTER
+Stage         COLLSCAN                IXSCAN
+Docs examined 40012                51
+Time (ms)     18                9
+
+03_bulk_and_index_demo.js: cleanup done. Bulk rows removed, compound index dropped.
