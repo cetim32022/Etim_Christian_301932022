@@ -1,0 +1,74 @@
+
+======================================================================
+Part 1 - the bug (read balance then UPDATE; lost update / overdraft)
+======================================================================
+Start balance on account 9999901: 100,000.00
+Two threads each withdraw 80,000.00 via read-modify-write.
+  T1: rows=1, wrote=20000.0, err=None
+  T2: rows=1, wrote=20000.0, err=None
+End balance on account 9999901: 20,000.00
+Total balance reduction observed: 80,000.00
+Total the two threads claimed to withdraw: 160,000.00
+BUG: balance moved by less than the sum of the two withdrawals.
+     One withdrawal was lost - the PFA is short of real money.
+
+======================================================================
+Part 2 - CHECK constraint fix (atomic decrement + balance >= 0)
+======================================================================
+Start balance on account 9999901: 100,000.00
+Two threads each do UPDATE rsa_account SET balance = balance - 80,000.00
+Schema has CHECK (balance >= 0).
+  T1: rows=1, err=None
+  T2: rows=0, err=23514
+End balance on account 9999901: 20,000.00
+FIX: the second UPDATE raised SQLSTATE 23514 (check_violation) because it would have pushed balance below 0.
+
+======================================================================
+Part 3 - atomic conditional UPDATE (chosen P3 fix)
+======================================================================
+Start balance on account 9999901: 100,000.00
+Two threads each run:
+    UPDATE rsa_account SET balance = balance - :amt
+     WHERE rsa_account_id = :id AND balance >= :amt
+  and check the row count.
+  T1: rows_affected=1, err=None
+  T2: rows_affected=0, err=None
+End balance on account 9999901: 20,000.00
+FIX: one thread got rowcount=1 (success), the other got rowcount=0 (balance already below the withdrawal amount).
+     The app turns rowcount=0 into 'insufficient funds' - no overdraft, no lost money.
+
+======================================================================
+Part 4 - SERIALIZABLE isolation (expects SQLSTATE 40001)
+======================================================================
+Start balance on account 9999901: 100,000.00
+Both threads run in SERIALIZABLE isolation, each reads balance then UPDATEs.
+Expected: one commits, the other aborts with SQLSTATE 40001 (serialization_failure).
+  T1: rows=1, err=None
+  T2: rows=0, err=40001
+End balance on account 9999901: 20,000.00
+FIX: one transaction was aborted with SQLSTATE 40001 so the conflict could not silently corrupt the balance.
+
+======================================================================
+Part 5 - READ COMMITTED vs REPEATABLE READ (visibility)
+======================================================================
+A long-running transaction T1 reads balance twice with a gap in between.
+A second transaction T2 commits a write between the two reads.
+Under READ COMMITTED, T1's two reads return DIFFERENT values.
+Under REPEATABLE READ, T1's two reads return the SAME value (snapshot frozen at first statement).
+  READ COMMITTED : first=100,000.00  second=150,000.00  -> DIFFERENT
+  REPEATABLE READ: first=100,000.00  second=100,000.00  -> SAME
+
+======================================================================
+Part 6 - deadlock (SQLSTATE 40P01) plus fixed-order version
+======================================================================
+--- 6a. PRONE order: T1 locks A then B; T2 locks B then A ---
+  T1: err=40P01 (deadlock detected)
+  T2: err=None (None)
+  DEADLOCK: one transaction was aborted with SQLSTATE 40P01.
+
+--- 6b. FIXED order: both threads lock A first, then B ---
+  T1: err=None (None)
+  T2: err=None (None)
+  NO DEADLOCK: both transactions committed because they acquired locks in the same order.
+
+Cleanup: demo rows deleted. Database left as it was found.
